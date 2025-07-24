@@ -14,19 +14,63 @@ class SQLiteDatabase {
         try {
             console.log('🚀 Initializing hybrid SQLite database...');
             
-            // Load sql.js from CDN
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js';
-            document.head.appendChild(script);
+            // Try multiple CDN sources for sql.js
+            const cdnSources = [
+                'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js',
+                'https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js',
+                'https://unpkg.com/sql.js@1.8.0/dist/sql-wasm.js'
+            ];
             
-            await new Promise((resolve, reject) => {
-                script.onload = resolve;
-                script.onerror = reject;
-            });
+            let SQL = null;
+            let lastError = null;
+            
+            for (const cdnUrl of cdnSources) {
+                try {
+                    console.log(`🔄 Trying CDN: ${cdnUrl}`);
+                    
+                    // Load sql.js from CDN
+                    const script = document.createElement('script');
+                    script.src = cdnUrl;
+                    document.head.appendChild(script);
+                    
+                    await new Promise((resolve, reject) => {
+                        script.onload = resolve;
+                        script.onerror = reject;
+                    });
 
-            const SQL = await window.initSqlJs({
-                locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
-            });
+                    // Try to initialize with fallback WASM locations
+                    SQL = await window.initSqlJs({
+                        locateFile: file => {
+                            console.log(`🔍 Loading SQL.js file: ${file}`);
+                            
+                            // Try multiple sources for WASM file
+                            const wasmSources = [
+                                `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${file}`,
+                                `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`,
+                                `https://unpkg.com/sql.js@1.8.0/dist/${file}`
+                            ];
+                            
+                            // Return the first source, but we'll implement retry logic
+                            return wasmSources[0];
+                        }
+                    });
+                    
+                    console.log(`✅ Successfully loaded SQL.js from: ${cdnUrl}`);
+                    break;
+                    
+                } catch (error) {
+                    console.warn(`❌ Failed to load from ${cdnUrl}:`, error);
+                    lastError = error;
+                    // Remove the failed script tag
+                    const scripts = document.querySelectorAll(`script[src="${cdnUrl}"]`);
+                    scripts.forEach(s => s.remove());
+                    continue;
+                }
+            }
+            
+            if (!SQL) {
+                throw new Error(`Failed to load SQL.js from all CDN sources. Last error: ${lastError?.message}`);
+            }
 
             // Try to load existing database
             let dbData = null;
@@ -34,6 +78,7 @@ class SQLiteDatabase {
                 const saved = localStorage.getItem('ai-gallery-hybrid-db');
                 if (saved) {
                     dbData = new Uint8Array(JSON.parse(saved));
+                    console.log(`📦 Loaded existing database (${Math.round(dbData.length / 1024)}KB)`);
                 }
             } catch (e) {
                 console.log('Creating new database');
@@ -46,11 +91,34 @@ class SQLiteDatabase {
             await this.performMigration();
             
             this.isInitialized = true;
-            console.log('✅ Hybrid SQLite database initialized');
+            console.log('✅ Hybrid SQLite database initialized successfully');
         } catch (error) {
             console.error('❌ Database initialization failed:', error);
-            throw error;
+            
+            // Fallback to a simple in-memory storage if SQLite fails
+            console.warn('🔄 Falling back to simple in-memory storage...');
+            this.fallbackToMemoryStorage();
         }
+    }
+
+    fallbackToMemoryStorage() {
+        console.log('📝 Initializing fallback memory storage...');
+        this.memoryStorage = [];
+        
+        // Try to load existing fallback data from localStorage
+        try {
+            const saved = localStorage.getItem('ai-gallery-fallback-data');
+            if (saved) {
+                this.memoryStorage = JSON.parse(saved);
+                console.log(`📦 Loaded ${this.memoryStorage.length} items from fallback storage`);
+            }
+        } catch (e) {
+            console.warn('Could not load fallback data:', e);
+        }
+        
+        this.isInitialized = true;
+        this.isFallbackMode = true;
+        console.log('✅ Fallback storage initialized');
     }
 
     saveDatabase() {
@@ -296,6 +364,10 @@ class SQLiteDatabase {
     async loadAllMedia() {
         if (!this.isInitialized) await this.init();
         
+        if (this.isFallbackMode) {
+            return [...this.memoryStorage].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+        }
+        
         const stmt = this.db.prepare('SELECT * FROM media ORDER BY created_at DESC');
         
         const results = [];
@@ -310,6 +382,35 @@ class SQLiteDatabase {
 
     async addMedia(mediaData) {
         if (!this.isInitialized) await this.init();
+        
+        if (this.isFallbackMode) {
+            const id = this.memoryStorage.length + 1;
+            const item = {
+                id,
+                title: mediaData.title || '',
+                prompt: mediaData.prompt || '',
+                model: mediaData.model || '',
+                tags: mediaData.tags || '',
+                notes: mediaData.notes || '',
+                dateAdded: mediaData.dateAdded || new Date().toISOString(),
+                mediaType: mediaData.mediaType || 'image',
+                imageData: mediaData.imageData || '',
+                thumbnailData: mediaData.thumbnailData || mediaData.imageData || '',
+                thumbnailPosition: mediaData.thumbnailPosition || { x: 50, y: 25 },
+                metadata: mediaData.metadata || {},
+                serverPath: mediaData.serverPath || null
+            };
+            this.memoryStorage.push(item);
+            
+            // Save to localStorage as backup
+            try {
+                localStorage.setItem('ai-gallery-fallback-data', JSON.stringify(this.memoryStorage));
+            } catch (e) {
+                console.warn('Could not save fallback data to localStorage:', e);
+            }
+            
+            return id;
+        }
         
         const fileSize = this.calculateFileSize(mediaData.imageData);
         
@@ -490,6 +591,22 @@ class SQLiteDatabase {
 
     async getStats() {
         if (!this.isInitialized) await this.init();
+        
+        if (this.isFallbackMode) {
+            const total = this.memoryStorage.length;
+            const images = this.memoryStorage.filter(item => item.mediaType === 'image').length;
+            const videos = this.memoryStorage.filter(item => item.mediaType === 'video').length;
+            const totalSize = this.memoryStorage.reduce((sum, item) => {
+                return sum + this.calculateFileSize(item.imageData);
+            }, 0);
+            
+            return {
+                total,
+                images,
+                videos,
+                totalSizeMB: Math.round(totalSize / (1024 * 1024))
+            };
+        }
         
         const stmt = this.db.prepare(`
             SELECT 
