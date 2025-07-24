@@ -36,11 +36,21 @@ async function init() {
 async function loadImages() {
     try {
         const allImages = await database.loadAllMedia();
-        setAllImages(allImages);
-        displayImages(allImages);
+        
+        // Ensure we always have a valid array
+        const validImages = Array.isArray(allImages) ? allImages : [];
+        
+        setAllImages(validImages);
+        displayImages(validImages);
+        
+        console.log(`📊 Loaded ${validImages.length} media items`);
     } catch (error) {
         console.error('Error loading images:', error);
         showNotification('Error loading media: ' + error.message, 'error');
+        
+        // Display empty gallery on error
+        setAllImages([]);
+        displayImages([]);
     }
 }
 
@@ -113,11 +123,19 @@ async function handleSearch(e) {
     try {
         const searchTerm = e.target.value;
         const results = await database.searchMedia(searchTerm);
-        setAllImages(results);
-        displayImages(results);
+        
+        // Ensure we always have a valid array
+        const validResults = Array.isArray(results) ? results : [];
+        
+        setAllImages(validResults);
+        displayImages(validResults);
     } catch (error) {
         console.error('Error searching:', error);
         showNotification('Error searching media: ' + error.message, 'error');
+        
+        // Display empty results on error
+        setAllImages([]);
+        displayImages([]);
     }
 }
 

@@ -368,16 +368,22 @@ class SQLiteDatabase {
             return [...this.memoryStorage].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
         }
         
-        const stmt = this.db.prepare('SELECT * FROM media ORDER BY created_at DESC');
-        
-        const results = [];
-        while (stmt.step()) {
-            const row = stmt.getAsObject();
-            results.push(this.convertSQLiteToExpected(row));
+        try {
+            const stmt = this.db.prepare('SELECT * FROM media ORDER BY created_at DESC');
+            
+            const results = [];
+            while (stmt.step()) {
+                const row = stmt.getAsObject();
+                results.push(this.convertSQLiteToExpected(row));
+            }
+            stmt.free();
+            
+            return results;
+        } catch (error) {
+            console.error('Error in loadAllMedia:', error);
+            // Return empty array if query fails
+            return [];
         }
-        stmt.free();
-        
-        return results;
     }
 
     async addMedia(mediaData) {

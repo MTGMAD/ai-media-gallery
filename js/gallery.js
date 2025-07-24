@@ -7,6 +7,12 @@ let allImages = [];
 
 // Display images and videos in gallery
 export function displayImages(items) {
+    // Handle undefined or null items
+    if (!items || !Array.isArray(items)) {
+        console.warn('⚠️ displayImages called with invalid items:', items);
+        items = []; // Default to empty array
+    }
+    
     console.log(`🎨 displayImages called with ${items.length} items`);
     allImages = items; // Store for other modules to access
     const gallery = document.getElementById('gallery');
