@@ -360,22 +360,33 @@ class SQLiteDatabase {
                 return false;
             }
             
-            // If item has a server path, it should be valid
+            // If item has a server path, validate it more permissively
             if (item.serverPath && typeof item.serverPath === 'string' && item.serverPath.trim() !== '') {
-                // Check if server path looks reasonable (contains expected patterns)
                 const serverPath = item.serverPath.trim();
                 
-                // Server paths should contain 'images/' and have a file extension
-                if (!serverPath.includes('images/') || !serverPath.match(/\.(png|jpg|jpeg|gif|webp|mp4|mov|avi)$/i)) {
-                    console.warn(`❌ Invalid server path: ${serverPath}`);
+                console.log(`🔍 Validating server path: "${serverPath}"`);
+                
+                // More permissive validation - just check for basic file extension
+                const hasValidExtension = /\.(png|jpg|jpeg|gif|webp|mp4|mov|avi|mkv)$/i.test(serverPath);
+                
+                if (!hasValidExtension) {
+                    console.warn(`❌ Invalid server path - no valid file extension: ${serverPath}`);
                     return false;
                 }
                 
-                // Check for obviously invalid paths (like the problematic one we've been seeing)
+                // Check for obviously corrupted paths (very long or containing invalid characters)
+                if (serverPath.length > 500 || serverPath.includes('\0') || serverPath.includes('..')) {
+                    console.warn(`❌ Invalid server path - corrupted or dangerous: ${serverPath}`);
+                    return false;
+                }
+                
+                // Only reject the specific problematic path we know about
                 if (serverPath.includes('1753327833503_ComfyUI_-_Win_-_2025-07-07_00004')) {
                     console.warn(`❌ Known invalid server path detected: ${serverPath}`);
                     return false;
                 }
+                
+                console.log(`✅ Server path validation passed: ${serverPath}`);
             }
             
             // If no server path, must have image data
@@ -385,12 +396,13 @@ class SQLiteDatabase {
                 return false;
             }
             
-            // Date should be valid
+            // Date should be valid if provided
             if (item.dateAdded && isNaN(new Date(item.dateAdded).getTime())) {
                 console.warn(`❌ Invalid date: ${item.dateAdded}`);
                 return false;
             }
             
+            console.log(`✅ Item validation passed for: ${item.title} (ID: ${item.id})`);
             return true;
         } catch (error) {
             console.warn('❌ Error validating item:', error);
