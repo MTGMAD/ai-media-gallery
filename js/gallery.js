@@ -46,7 +46,9 @@ export function displayImages(items) {
         let displayImage;
         if (item.serverPath && item.serverPath.trim() !== '') {
             // Use server path for images uploaded to server
-            displayImage = `/${item.serverPath}`;
+            // Convert Windows backslashes to forward slashes for web URLs
+            const webPath = item.serverPath.replace(/\\/g, '/');
+            displayImage = `/${webPath}`;
             console.log(`🌐 Using server path: ${displayImage}`);
         } else {
             // Fall back to database data for legacy items

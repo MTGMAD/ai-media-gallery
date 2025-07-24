@@ -24,16 +24,46 @@ export function generateSafeFilename(title, suffix = '') {
 
 // Calculate file size from base64 data
 export function calculateFileSize(base64Data) {
-    const data = base64Data.split(',')[1];
-    const fileSizeBytes = Math.round((data.length * 3) / 4);
-    const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(1);
-    const fileSizeKB = (fileSizeBytes / 1024).toFixed(1);
-    return {
-        bytes: fileSizeBytes,
-        display: fileSizeBytes > 1024 * 1024 ? `${fileSizeMB} MB` : `${fileSizeKB} KB`,
-        mb: fileSizeMB,
-        kb: fileSizeKB
-    };
+    // Handle undefined, null, or empty data
+    if (!base64Data || typeof base64Data !== 'string') {
+        return {
+            bytes: 0,
+            display: 'Unknown',
+            mb: '0.0',
+            kb: '0.0'
+        };
+    }
+    
+    try {
+        const data = base64Data.split(',')[1];
+        if (!data) {
+            // If no comma found or no data after comma
+            return {
+                bytes: 0,
+                display: 'Unknown',
+                mb: '0.0',
+                kb: '0.0'
+            };
+        }
+        
+        const fileSizeBytes = Math.round((data.length * 3) / 4);
+        const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(1);
+        const fileSizeKB = (fileSizeBytes / 1024).toFixed(1);
+        return {
+            bytes: fileSizeBytes,
+            display: fileSizeBytes > 1024 * 1024 ? `${fileSizeMB} MB` : `${fileSizeKB} KB`,
+            mb: fileSizeMB,
+            kb: fileSizeKB
+        };
+    } catch (error) {
+        console.warn('Error calculating file size:', error);
+        return {
+            bytes: 0,
+            display: 'Unknown',
+            mb: '0.0',
+            kb: '0.0'
+        };
+    }
 }
 
 // Clean up text content for display
