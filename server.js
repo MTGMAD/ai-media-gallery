@@ -126,9 +126,10 @@ app.post('/upload-multiple', upload.array('images', 20), (req, res) => {
 });
 
 // DELETE endpoint for removing files from server
-app.delete('/delete/:relativePath(*)', (req, res) => {
+app.delete('/delete/:folder/:date/:filename', (req, res) => {
   try {
-    const relativePath = req.params.relativePath;
+    const { folder, date, filename } = req.params;
+    const relativePath = `${folder}/${date}/${filename}`;
     const fullPath = path.join(__dirname, relativePath);
     
     // Security check: ensure the path is within our project directory
