@@ -346,6 +346,85 @@ class SQLiteDatabase {
         return item;
     }
 
+    // Validate media item to prevent corrupted entries from being loaded
+    validateMediaItem(item) {
+        try {
+            // Basic required fields
+            if (!item || typeof item !== 'object') {
+                console.warn('❌ Invalid item: not an object');
+                return false;
+            }
+            
+            if (!item.id || !item.title) {
+                console.warn('❌ Invalid item: missing id or title');
+                return false;
+            }
+            
+            // If item has a server path, it should be valid
+            if (item.serverPath && typeof item.serverPath === 'string' && item.serverPath.trim() !== '') {
+                // Check if server path looks reasonable (contains expected patterns)
+                const serverPath = item.serverPath.trim();
+                
+                // Server paths should contain 'images/' and have a file extension
+                if (!serverPath.includes('images/') || !serverPath.match(/\.(png|jpg|jpeg|gif|webp|mp4|mov|avi)$/i)) {
+                    console.warn(`❌ Invalid server path: ${serverPath}`);
+                    return false;
+                }
+                
+                // Check for obviously invalid paths (like the problematic one we've been seeing)
+                if (serverPath.includes('1753327833503_ComfyUI_-_Win_-_2025-07-07_00004')) {
+                    console.warn(`❌ Known invalid server path detected: ${serverPath}`);
+                    return false;
+                }
+            }
+            
+            // If no server path, must have image data
+            if ((!item.serverPath || item.serverPath.trim() === '') && 
+                (!item.imageData || item.imageData.trim() === '')) {
+                console.warn('❌ Invalid item: no server path and no image data');
+                return false;
+            }
+            
+            // Date should be valid
+            if (item.dateAdded && isNaN(new Date(item.dateAdded).getTime())) {
+                console.warn(`❌ Invalid date: ${item.dateAdded}`);
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.warn('❌ Error validating item:', error);
+            return false;
+        }
+    }
+
+    // Remove invalid entries from database
+    async removeInvalidEntries(invalidIds) {
+        if (!invalidIds || invalidIds.length === 0) return;
+        
+        try {
+            this.db.exec('BEGIN TRANSACTION');
+            
+            const stmt = this.db.prepare('DELETE FROM media WHERE id = ?');
+            for (const id of invalidIds) {
+                stmt.run([id]);
+            }
+            stmt.free();
+            
+            this.db.exec('COMMIT');
+            this.saveDatabase();
+            
+            console.log(`✅ Removed ${invalidIds.length} invalid entries from database`);
+        } catch (error) {
+            console.error('❌ Error removing invalid entries:', error);
+            try {
+                this.db.exec('ROLLBACK');
+            } catch (e) {
+                // Ignore rollback errors
+            }
+        }
+    }
+
     // API Methods that match original database.js
 
     getInstance() {
@@ -372,11 +451,27 @@ class SQLiteDatabase {
             const stmt = this.db.prepare('SELECT * FROM media ORDER BY created_at DESC');
             
             const results = [];
+            const invalidIds = [];
+            
             while (stmt.step()) {
                 const row = stmt.getAsObject();
-                results.push(this.convertSQLiteToExpected(row));
+                const item = this.convertSQLiteToExpected(row);
+                
+                // Validate the item before adding to results
+                if (this.validateMediaItem(item)) {
+                    results.push(item);
+                } else {
+                    console.warn(`🗑️ Invalid media item found, will be removed: ${item.title} (ID: ${item.id})`);
+                    invalidIds.push(item.id);
+                }
             }
             stmt.free();
+            
+            // Remove invalid entries from database
+            if (invalidIds.length > 0) {
+                console.log(`🧹 Cleaning up ${invalidIds.length} invalid database entries...`);
+                await this.removeInvalidEntries(invalidIds);
+            }
             
             return results;
         } catch (error) {
