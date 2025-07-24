@@ -12,6 +12,42 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
+// Serve favicon and related files with proper MIME types
+app.get('/favicon.ico', (req, res) => {
+  res.type('image/x-icon');
+  res.sendFile(path.join(__dirname, 'favicon.ico'));
+});
+
+app.get('/favicon-16x16.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'favicon-16x16.png'));
+});
+
+app.get('/favicon-32x32.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'favicon-32x32.png'));
+});
+
+app.get('/apple-touch-icon.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'apple-touch-icon.png'));
+});
+
+app.get('/site.webmanifest', (req, res) => {
+  res.type('application/manifest+json');
+  res.sendFile(path.join(__dirname, 'site.webmanifest'));
+});
+
+app.get('/android-chrome-192x192.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'android-chrome-192x192.png'));
+});
+
+app.get('/android-chrome-512x512.png', (req, res) => {
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'android-chrome-512x512.png'));
+});
+
 // Configure multer for file uploads with date-based organization and media type separation
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
