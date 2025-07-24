@@ -8,12 +8,16 @@ import { setupModalEventListeners } from './modal.js';
 import { setupThumbnailPositionPicker } from './thumbnailEditor.js';
 import { addThumbnailGenerationControls } from './thumbnailGenerator.js';
 import { debounce, showNotification, downloadBlob, generateSafeFilename } from './utils.js';
+import { cleanupDatabaseStorage, isCleanupNeeded, getStorageStats } from './databaseCleanup.js';
 
 // Initialize the app
 async function init() {
     console.log('🚀 Initializing AI Media Gallery v3.0');
     
     try {
+        // Check if database cleanup is needed (fixes quota exceeded errors)
+        await checkAndOfferCleanup();
+        
         await loadImages();
         await updateStatsDisplay();
         setupEventListeners();
@@ -160,6 +164,47 @@ async function importAllData(e) {
     
     // Reset file input
     e.target.value = '';
+}
+
+// Check if database cleanup is needed and offer to fix quota issues
+async function checkAndOfferCleanup() {
+    try {
+        const needsCleanup = await isCleanupNeeded();
+        if (needsCleanup) {
+            const stats = await getStorageStats();
+            console.log('🚨 Database cleanup needed:', stats);
+            
+            const message = `⚠️ Storage Optimization Available\n\n` +
+                `Your database contains ${stats.redundantDataSizeMB}MB of redundant data that can be safely removed.\n\n` +
+                `This will fix "QuotaExceededError" issues and improve performance.\n\n` +
+                `Would you like to optimize your storage now?`;
+            
+            if (confirm(message)) {
+                console.log('🧹 User approved cleanup, starting...');
+                showNotification('Optimizing storage, please wait...', 'info');
+                
+                const result = await cleanupDatabaseStorage();
+                
+                if (result.success) {
+                    showNotification(
+                        `✅ Storage optimized successfully!\n\n` +
+                        `• ${result.cleanedCount} items cleaned\n` +
+                        `• ${result.spaceSavedMB}MB freed\n` +
+                        `• Quota errors should be resolved`, 
+                        'success'
+                    );
+                } else {
+                    showNotification('❌ Storage optimization failed: ' + result.message, 'error');
+                }
+            } else {
+                console.log('ℹ️ User declined cleanup');
+                showNotification('Storage optimization skipped. You can run it later if needed.', 'info');
+            }
+        }
+    } catch (error) {
+        console.warn('Error checking cleanup status:', error);
+        // Don't block app initialization if cleanup check fails
+    }
 }
 
 // Start the app when DOM is loaded

@@ -32,8 +32,13 @@ export function openImageModal(item, autoplay = false) {
         modalPreviewVideo.style.display = 'block';
         videoControls.style.display = 'flex';
         
+        // Use server path if available, otherwise fall back to database data
+        const videoSrc = (item.serverPath && item.serverPath.trim() !== '') 
+            ? `/${item.serverPath}` 
+            : item.imageData;
+        
         // Set video source and attributes
-        modalPreviewVideo.src = item.imageData;
+        modalPreviewVideo.src = videoSrc;
         modalPreviewVideo.loop = true; // Enable loop by default
         modalPreviewVideo.muted = false; // Unmuted for user interaction
         
@@ -54,7 +59,13 @@ export function openImageModal(item, autoplay = false) {
         modalPreviewVideo.style.display = 'none';
         videoControls.style.display = 'none';
         modalPreviewImg.style.display = 'block';
-        modalPreviewImg.src = item.imageData;
+        
+        // Use server path if available, otherwise fall back to database data
+        const imageSrc = (item.serverPath && item.serverPath.trim() !== '') 
+            ? `/${item.serverPath}` 
+            : item.imageData;
+        
+        modalPreviewImg.src = imageSrc;
     }
     
     // Set title below media preview
@@ -255,13 +266,19 @@ function setupFullSizeHandlers(item, isVideo) {
         // For videos, clicking opens full-size in overlay
         modalPreviewVideo.onclick = (e) => {
             e.stopPropagation();
-            openFullSizeMedia(item.imageData, 'video');
+            const videoSrc = (item.serverPath && item.serverPath.trim() !== '') 
+                ? `/${item.serverPath}` 
+                : item.imageData;
+            openFullSizeMedia(videoSrc, 'video');
         };
     } else {
         // For images, clicking opens full-size in overlay
         modalPreviewImg.onclick = (e) => {
             e.stopPropagation();
-            openFullSizeMedia(item.imageData, 'image');
+            const imageSrc = (item.serverPath && item.serverPath.trim() !== '') 
+                ? `/${item.serverPath}` 
+                : item.imageData;
+            openFullSizeMedia(imageSrc, 'image');
         };
     }
 }

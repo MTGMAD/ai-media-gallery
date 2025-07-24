@@ -54,12 +54,15 @@ export async function processFile(file, database) {
         const serverUploadResult = await uploadFileToServer(file);
         console.log('✅ Server upload successful:', serverUploadResult);
         
-        // STEP 2: Store in IndexedDB (for metadata and local access)
+        // STEP 2: Store in Database (metadata only, no full image data for server-uploaded files)
         const reader = new FileReader();
         return new Promise((resolve, reject) => {
             reader.onload = async (e) => {
                 try {
                     const mediaData = e.target.result;
+                    
+                    // Create a small thumbnail for database storage (max 200x200)
+                    const smallThumbnail = await createSmallThumbnail(mediaData, isVideo ? thumbnailData : mediaData);
                     
                     const newMedia = {
                         title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
@@ -68,11 +71,11 @@ export async function processFile(file, database) {
                         tags: aiInfo.tags || '',
                         notes: aiInfo.notes || '',
                         dateAdded: new Date().toISOString(),
-                        imageData: mediaData, // Keep same field name for compatibility
+                        imageData: '', // Don't store full image data when server upload succeeds
                         metadata: metadata,
                         serverPath: serverUploadResult.relativePath || null,
                         mediaType: isVideo ? 'video' : 'image',
-                        thumbnailData: thumbnailData || mediaData, // For videos, store thumbnail separately
+                        thumbnailData: smallThumbnail, // Store small thumbnail only
                         thumbnailPosition: { x: 50, y: 25 } // TOP-ALIGNED: 25% from top instead of 50% center
                     };
 
@@ -132,6 +135,57 @@ export async function processFile(file, database) {
             reader.readAsDataURL(file);
         });
     }
+}
+
+/**
+ * Create a small thumbnail for database storage (max 200x200, high compression)
+ */
+async function createSmallThumbnail(originalData, sourceData) {
+    return new Promise((resolve) => {
+        try {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Calculate dimensions to fit within 200x200 while maintaining aspect ratio
+                const maxSize = 200;
+                let { width, height } = img;
+                
+                if (width > height) {
+                    if (width > maxSize) {
+                        height = (height * maxSize) / width;
+                        width = maxSize;
+                    }
+                } else {
+                    if (height > maxSize) {
+                        width = (width * maxSize) / height;
+                        height = maxSize;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw the image with high compression
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert to JPEG with high compression (quality 0.3)
+                const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.3);
+                resolve(thumbnailDataUrl);
+            };
+            
+            img.onerror = () => {
+                console.warn('Failed to create small thumbnail, using original');
+                resolve(sourceData);
+            };
+            
+            img.src = sourceData;
+        } catch (error) {
+            console.warn('Error creating small thumbnail:', error);
+            resolve(sourceData);
+        }
+    });
 }
 
 /**
