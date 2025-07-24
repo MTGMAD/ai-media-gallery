@@ -9,6 +9,7 @@ import { setupThumbnailPositionPicker } from './thumbnailEditor.js';
 import { addThumbnailGenerationControls } from './thumbnailGenerator.js';
 import { debounce, showNotification, downloadBlob, generateSafeFilename } from './utils.js';
 import { cleanupDatabaseStorage, isCleanupNeeded, getStorageStats } from './databaseCleanup.js';
+import { generateIntegrityReport, cleanupOrphanFiles } from './orphanFileManager.js';
 
 // Initialize the app
 async function init() {
@@ -72,6 +73,7 @@ function setupEventListeners() {
     const exportData = document.getElementById('exportData');
     const importData = document.getElementById('importData');
     const importFile = document.getElementById('importFile');
+    const orphanCleanup = document.getElementById('orphanCleanup');
 
     // Upload area click
     uploadArea.addEventListener('click', () => fileInput.click());
@@ -110,6 +112,7 @@ function setupEventListeners() {
     exportData.addEventListener('click', exportAllData);
     importData.addEventListener('click', () => importFile.click());
     importFile.addEventListener('change', importAllData);
+    orphanCleanup.addEventListener('click', handleOrphanCleanup);
     
     // Listen for media updates from other modules
     window.addEventListener('mediaUpdated', async () => {
@@ -182,6 +185,60 @@ async function importAllData(e) {
     
     // Reset file input
     e.target.value = '';
+}
+
+// Handle orphan file cleanup
+async function handleOrphanCleanup() {
+    try {
+        showNotification('🔍 Scanning for orphan files...', 'info');
+        
+        const report = await generateIntegrityReport(database);
+        
+        if (report.orphanCount === 0) {
+            showNotification('✅ No orphan files found! Your file system is clean.', 'success');
+            return;
+        }
+        
+        const message = `🗑️ Orphan File Cleanup Report\n\n` +
+            `Found ${report.orphanCount} orphan files on server without database records.\n` +
+            `These files are taking up space and should be cleaned up.\n\n` +
+            `📊 System Status:\n` +
+            `• Server Files: ${report.serverFiles}\n` +
+            `• Database Records: ${report.databaseRecords}\n` +
+            `• Orphan Files: ${report.orphanCount}\n` +
+            `• Missing Files: ${report.missingCount}\n` +
+            `• Integrity Score: ${report.integrityScore}%\n\n` +
+            `Would you like to delete these orphan files?`;
+        
+        if (confirm(message)) {
+            showNotification('🧹 Cleaning up orphan files...', 'info');
+            
+            const cleanupResult = await cleanupOrphanFiles(report.orphanFiles);
+            
+            if (cleanupResult.success.length > 0) {
+                showNotification(
+                    `✅ Orphan cleanup completed!\n\n` +
+                    `• ${cleanupResult.success.length} files deleted\n` +
+                    `• ${cleanupResult.failed.length} files failed\n` +
+                    `• File system integrity improved`, 
+                    'success'
+                );
+            } else {
+                showNotification(
+                    `❌ Orphan cleanup failed!\n\n` +
+                    `No files were successfully deleted.\n` +
+                    `Check console for error details.`, 
+                    'error'
+                );
+            }
+        } else {
+            showNotification('Orphan cleanup cancelled.', 'info');
+        }
+        
+    } catch (error) {
+        console.error('Error during orphan cleanup:', error);
+        showNotification('Error during orphan cleanup: ' + error.message, 'error');
+    }
 }
 
 // Check if database cleanup is needed and offer to fix quota issues

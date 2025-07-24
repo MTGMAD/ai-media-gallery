@@ -79,19 +79,47 @@ export async function processFile(file, database) {
                         thumbnailPosition: { x: 50, y: 25 } // TOP-ALIGNED: 25% from top instead of 50% center
                     };
 
-                    const mediaId = await database.getInstance().images.add(newMedia);
-                    resolve({ 
-                        success: true, 
-                        imageId: mediaId, 
-                        imageData: newMedia,
-                        serverUpload: serverUploadResult 
-                    });
+                    // CRITICAL: Try to add to database, rollback server file if it fails
+                    try {
+                        const mediaId = await database.getInstance().images.add(newMedia);
+                        console.log('✅ Database entry created successfully');
+                        resolve({ 
+                            success: true, 
+                            imageId: mediaId, 
+                            imageData: newMedia,
+                            serverUpload: serverUploadResult 
+                        });
+                    } catch (dbError) {
+                        console.error('❌ Database operation failed, rolling back server file:', dbError);
+                        
+                        // Rollback: Delete the uploaded file from server
+                        try {
+                            await deleteServerFile(serverUploadResult.relativePath);
+                            console.log('✅ Server file rolled back successfully');
+                        } catch (deleteError) {
+                            console.error('❌ Failed to rollback server file:', deleteError);
+                        }
+                        
+                        reject(new Error(`Database operation failed: ${dbError.message}. Server file has been cleaned up.`));
+                    }
                 } catch (error) {
+                    // If any other error occurs, also try to rollback server file
+                    console.error('❌ Processing error, rolling back server file:', error);
+                    try {
+                        await deleteServerFile(serverUploadResult.relativePath);
+                        console.log('✅ Server file rolled back after processing error');
+                    } catch (deleteError) {
+                        console.error('❌ Failed to rollback server file after processing error:', deleteError);
+                    }
                     reject(error);
                 }
             };
             
-            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.onerror = () => {
+                // Also rollback on file read error
+                deleteServerFile(serverUploadResult.relativePath).catch(console.error);
+                reject(new Error('Failed to read file'));
+            };
             reader.readAsDataURL(file);
         });
     } catch (serverError) {
@@ -312,6 +340,42 @@ async function uploadFileToServer(file) {
     
     const result = await response.json();
     console.log('📤 Server upload complete:', result);
+    return result;
+}
+
+/**
+ * Delete file from server (for rollback when database operations fail)
+ */
+async function deleteServerFile(relativePath) {
+    if (!relativePath) {
+        throw new Error('No file path provided for deletion');
+    }
+    
+    console.log('🗑️ Attempting to delete server file:', relativePath);
+    
+    // Parse the relative path to extract folder, date, and filename
+    // Expected format: "images/2025-07-23/filename.png" or "videos/2025-07-23/filename.mp4"
+    const pathParts = relativePath.split('/');
+    if (pathParts.length !== 3) {
+        throw new Error(`Invalid path format: ${relativePath}. Expected: folder/date/filename`);
+    }
+    
+    const [folder, date, filename] = pathParts;
+    
+    const response = await fetch(`/delete/${folder}/${date}/${filename}`, {
+        method: 'DELETE'
+    });
+    
+    console.log('🗑️ Delete response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error('🗑️ Delete response error:', errorData);
+        throw new Error(errorData.error || 'Delete failed');
+    }
+    
+    const result = await response.json();
+    console.log('🗑️ Server file deleted successfully:', result);
     return result;
 }
 
