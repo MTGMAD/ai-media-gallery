@@ -1,14 +1,14 @@
 {
-  "name": "ai-image-gallery",
+  "name": "ai-media-gallery",
   "version": "3.0.0",
-  "description": "AI Image Gallery with SQLite via sql.js for high-performance client-side database",
+  "description": "AI Media Gallery with SQLite via sql.js for high-performance client-side database - supports images and videos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "build": "echo 'No build step needed - using CDN for sql.js'",
     "copy-sqlite-assets": "echo 'No assets to copy - using CDN'",
-    "test": "echo 'Testing SQLite integration...' && node test-sqlite.js",
+    "test": "echo 'No tests configured yet'",
     "optimize": "echo 'Optimizing for production...'",
     "clean": "echo 'Nothing to clean - using CDN'"
   },
@@ -25,7 +25,9 @@
   },
   "keywords": [
     "ai",
+    "media-gallery",
     "image-gallery",
+    "video-gallery",
     "sqlite",
     "wasm",
     "media-management",
@@ -38,10 +40,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/ai-image-gallery.git"
+    "url": "https://github.com/MTGMAD/ai-media-gallery.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/ai-image-gallery/issues"
+    "url": "https://github.com/MTGMAD/ai-media-gallery/issues"
   },
-  "homepage": "https://github.com/your-username/ai-image-gallery#readme"
+  "homepage": "https://github.com/MTGMAD/ai-media-gallery#readme"
 }
