@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Media Gallery</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 AI Media Gallery</h1>
+        <p>Store and organize your AI-generated images and videos</p>
+    </div>
+
+    <div class="stats">
+        <span id="imageCount">0 items stored</span>
+    </div>
+
+    <div class="database-info">
+        <strong>📁 Database Status:</strong> Your media is stored locally in your browser's database.
+        <button class="export-btn" id="exportData">Export All Data</button>
+        <button class="export-btn" id="importData">Import Data</button>
+        <input type="file" id="importFile" accept=".json" style="display: none;">
+        <br><small>💡 Tip: Export your data regularly to backup your media collection!</small>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="searchBox" class="search-box" placeholder="Search media by title or prompt...">
+    </div>
+
+    <div class="upload-area" id="uploadArea">
+        <h3>📁 Add New Media</h3>
+        <p>Drag and drop images or MP4 videos here or click to browse</p>
+        <input type="file" id="fileInput" accept="image/*,video/mp4" multiple>
+    </div>
+
+    <div class="gallery" id="gallery"></div>
+
+    <div class="no-images" id="noImages" style="display: none;">
+        <p>No media yet. Add some images or videos by dragging and dropping them above!</p>
+    </div>
+
+    <!-- Modal for viewing/editing images and videos -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <!-- Content will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <script type="module" src="js/script.js"></script>
+</body>
+</html>
