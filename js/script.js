@@ -225,6 +225,7 @@ async function checkAndOfferCleanup() {
     }
 }
 
+
 // Start the app when DOM is loaded
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
