@@ -1,9 +1,9 @@
 // modal.js - Handles image/video modal display and interactions
 // v2.6 - Consolidated logging with summary reporting
 
-import { database } from './database.js';
+import { database } from './clientDatabase.js';
 import { displayOrganizedMetadata } from './metadata.js';
-import { showNotification, downloadBlob, generateSafeFilename } from './utils.js';
+import { showNotification, showConfirmDialog, downloadBlob, generateSafeFilename } from './utils.js';
 
 let currentImageId = null;
 let currentImageData = null;
@@ -495,7 +495,9 @@ export async function deleteCurrentImage() {
     
     const mediaType = currentImageData.mediaType === 'video' ? 'video' : 'image';
     
-    if (confirm(`Are you sure you want to delete this ${mediaType}?`)) {
+    // Show custom confirmation dialog
+    const confirmed = await showConfirmDialog(`Are you sure you want to delete this ${mediaType}?`);
+    if (confirmed) {
         try {
             console.log(`🗑️ Starting deletion process for item ${currentImageId} (${mediaType})`);
             
@@ -531,17 +533,32 @@ export async function deleteCurrentImage() {
             // STEP 3: Delete from server if serverPath exists
             if (currentImageData.serverPath) {
                 try {
-                    const response = await fetch(`/delete/${encodeURIComponent(currentImageData.serverPath)}`, {
-                        method: 'DELETE'
-                    });
+                    // Split serverPath into components: folder/date/filename
+                    // Handle both forward slashes and backslashes
+                    const pathComponents = currentImageData.serverPath.replace(/\\/g, '/').split('/');
                     
-                    if (response.ok) {
-                        console.log('✅ File deleted from server');
+                    if (pathComponents.length >= 3) {
+                        const folder = encodeURIComponent(pathComponents[0]);
+                        const date = encodeURIComponent(pathComponents[1]);
+                        const filename = encodeURIComponent(pathComponents.slice(2).join('/')); // Join remaining parts in case filename has slashes
+                        
+                        const response = await fetch(`/delete/${folder}/${date}/${filename}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        if (response.ok) {
+                            console.log('✅ File deleted from server');
+                        } else if (response.status === 404) {
+                            console.log('ℹ️ Server file not found (already deleted or test data)');
+                        } else {
+                            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                            console.warn(`⚠️ Server file deletion failed (${response.status}): ${errorData.error || 'Unknown error'}`);
+                        }
                     } else {
-                        console.warn('⚠️ Server file deletion failed, continuing with database deletion');
+                        console.warn('⚠️ Invalid server path format, cannot delete from server');
                     }
                 } catch (serverError) {
-                    console.warn('⚠️ Server delete request failed:', serverError);
+                    console.warn('⚠️ Server delete request failed:', serverError.message);
                     // Continue with database deletion even if server deletion fails
                 }
             }

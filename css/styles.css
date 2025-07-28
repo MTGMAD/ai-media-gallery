@@ -790,3 +790,123 @@ body {
 #fileInput {
     display: none;
 }
+
+/* Notification box styles */
+.notification-box {
+    position: fixed;
+    top: 20px;
+    right: -350px; /* Start hidden off-screen */
+    width: 300px;
+    padding: 15px 20px;
+    background: #4CAF50; /* Green background */
+    color: white;
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    font-size: 14px;
+    font-weight: 500;
+    transition: right 0.3s ease-in-out;
+    display: flex;
+    align-items: center;
+}
+
+.notification-box.show {
+    right: 20px; /* Slide in from right */
+}
+
+.notification-box.error {
+    background: #f44336; /* Red for errors */
+}
+
+.notification-box.info {
+    background: #2196F3; /* Blue for info */
+}
+
+.notification-box .notification-icon {
+    margin-right: 10px;
+    font-size: 18px;
+}
+
+.notification-box .notification-message {
+    flex: 1;
+}
+
+/* Custom confirmation dialog styles */
+.confirm-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.confirm-dialog.show {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.confirm-dialog-content {
+    background: white;
+    border-radius: 10px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.confirm-dialog.show .confirm-dialog-content {
+    transform: scale(1);
+}
+
+.confirm-dialog-message {
+    font-size: 16px;
+    margin-bottom: 25px;
+    text-align: center;
+    color: #333;
+}
+
+.confirm-dialog-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.confirm-dialog-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.confirm-dialog-btn-confirm {
+    background: #e74c3c;
+    color: white;
+}
+
+.confirm-dialog-btn-confirm:hover {
+    background: #c0392b;
+    transform: translateY(-2px);
+}
+
+.confirm-dialog-btn-cancel {
+    background: #95a5a6;
+    color: white;
+}
+
+.confirm-dialog-btn-cancel:hover {
+    background: #7f8c8d;
+    transform: translateY(-2px);
+}

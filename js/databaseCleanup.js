@@ -1,7 +1,7 @@
 // databaseCleanup.js - Utility to clean up database storage and fix quota issues
 // This removes redundant full image data when server paths exist
 
-import { database } from './database.js';
+import { database } from './clientDatabase.js';
 
 /**
  * Clean up database by removing full image data for items that have server paths

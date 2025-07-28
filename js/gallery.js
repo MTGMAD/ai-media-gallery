@@ -1,6 +1,6 @@
 // gallery.js - Handles gallery display and media card rendering
 
-import { formatDuration, getThumbnailPositionStyle, calculateFileSize } from './utils.js';
+import { formatDuration, getThumbnailPositionStyle, calculateFileSize, validateDataUrl, dataUrlToBlobUrl } from './utils.js';
 import { openImageModal } from './modal.js';
 
 let allImages = [];
@@ -40,21 +40,56 @@ export function displayImages(items) {
         const isVideo = item.mediaType === 'video';
         
         // Get file size from base64 data or server file info
-        const fileSize = calculateFileSize(item.imageData);
-        
-        // Use server path if available, otherwise fall back to database data
-        let displayImage;
-        if (item.serverPath && item.serverPath.trim() !== '') {
-            // Use server path for images uploaded to server
-            // Convert Windows backslashes to forward slashes for web URLs
-            const webPath = item.serverPath.replace(/\\/g, '/');
-            displayImage = `/${webPath}`;
-            console.log(`🌐 Using server path: ${displayImage}`);
+        let fileSize;
+        if (isVideo && item.metadata && item.metadata.fileSize) {
+            // For videos, use metadata file size if available
+            const sizeInMB = (item.metadata.fileSize / (1024 * 1024)).toFixed(1);
+            fileSize = {
+                bytes: item.metadata.fileSize,
+                display: `${sizeInMB} MB`,
+                mb: sizeInMB,
+                kb: (item.metadata.fileSize / 1024).toFixed(1)
+            };
         } else {
-            // Fall back to database data for legacy items
-            displayImage = item.thumbnailData || item.imageData;
-            console.log(`💾 Using database data (fallback)`);
+            // For images or videos without metadata, calculate from base64 data
+            fileSize = calculateFileSize(item.imageData);
         }
+        
+// Use server path if available, otherwise fall back to database data
+let displayImage;
+if (isVideo && item.thumbnailData) {
+    // For videos, use thumbnail data if available
+    console.log(`🔍 Video thumbnail data preview: ${item.thumbnailData.substring(0, 100)}...`);
+    const validatedThumbnail = validateDataUrl(item.thumbnailData);
+    if (validatedThumbnail === item.thumbnailData) {
+        // Convert large data URLs to blob URLs for better browser compatibility
+        displayImage = dataUrlToBlobUrl(validatedThumbnail);
+        console.log(`📺 Using video thumbnail data (validation passed, converted to blob URL)`);
+    } else {
+        // Thumbnail validation failed, use placeholder
+        displayImage = validatedThumbnail; // This will be the placeholder
+        console.log(`⚠️ Video thumbnail validation failed, using placeholder`);
+    }
+} else if (!isVideo && item.serverPath && item.serverPath.trim() !== '') {
+    // Use server path for images uploaded to server
+    // Convert Windows backslashes to forward slashes for web URLs
+    const webPath = item.serverPath.replace(/\\/g, '/');
+    displayImage = `/${webPath}`;
+    console.log(`🌐 Using server path: ${displayImage}`);
+} else {
+    // Fall back to database data for legacy items or videos without thumbnails
+    const fallbackData = item.thumbnailData || item.imageData;
+    displayImage = validateDataUrl(fallbackData);
+    console.log(`💾 Using database data (fallback)`);
+}
+
+// Add more detailed logging to identify the exact position of corruption in base64 data
+if (isVideo && item.thumbnailData) {
+    const validatedThumbnail = validateDataUrl(item.thumbnailData);
+    if (validatedThumbnail !== item.thumbnailData) {
+        console.warn(`⚠️ Video thumbnail validation failed for item ${item.id}: ${item.title || 'Untitled'}`);
+    }
+}
         
         console.log(`🎯 Using display image: ${displayImage ? 'Has data' : 'NO DATA'} (length: ${displayImage ? displayImage.length : 0})`);
         
@@ -62,7 +97,7 @@ export function displayImages(items) {
         card.innerHTML = `
             <div class="media-container">
                 <img src="${displayImage}" alt="${item.title || 'Untitled'}" loading="lazy" style="${getThumbnailPositionStyle(item)}" 
-                     onerror="console.error('❌ Image load error for item ${item.id}: ${item.title}'); this.style.display='none';">
+                     data-item-id="${item.id}" data-item-title="${item.title || 'Untitled'}">
                 ${isVideo ? `
                     <div class="video-overlay">
                         <button class="play-button" onclick="playVideo(${item.id}, event)" title="Play video">▶️</button>
@@ -87,6 +122,43 @@ export function displayImages(items) {
             </div>
         `;
         
+        // Add proper error handler to the image
+        const img = card.querySelector('img');
+        img.onerror = function() {
+            const itemId = this.getAttribute('data-item-id');
+            const itemTitle = this.getAttribute('data-item-title');
+            console.warn(`⚠️ Image load failed for item ${itemId}: ${itemTitle}, using placeholder`);
+            
+            // Replace with placeholder instead of hiding
+            this.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+            this.style.opacity = '0.5';
+            this.style.filter = 'grayscale(100%)';
+            
+            // Add a visual indicator that this is a placeholder
+            const container = this.parentElement;
+            if (container && !container.querySelector('.error-indicator')) {
+                const errorIndicator = document.createElement('div');
+                errorIndicator.className = 'error-indicator';
+                errorIndicator.innerHTML = '⚠️';
+                errorIndicator.style.cssText = `
+                    position: absolute;
+                    top: 5px;
+                    right: 5px;
+                    background: rgba(255, 0, 0, 0.8);
+                    color: white;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    z-index: 10;
+                `;
+                container.appendChild(errorIndicator);
+            }
+        };
+        
         gallery.appendChild(card);
         console.log(`✅ Card ${index + 1} added to gallery`);
         
@@ -101,23 +173,28 @@ export function displayImages(items) {
             }
         } else {
             // For images or videos without metadata, calculate from image
-            const img = new Image();
-            img.onload = function() {
+            const dimensionsImg = new Image();
+            // Capture the item data in closure to avoid reference issues
+            const currentItem = { id: item.id, title: item.title || 'Untitled' };
+            
+            dimensionsImg.onload = function() {
                 const dimensions = `${this.naturalWidth} × ${this.naturalHeight}`;
                 const dimensionsSpan = card.querySelector('.dimensions-placeholder');
                 if (dimensionsSpan) {
                     dimensionsSpan.textContent = dimensions;
                 }
-                console.log(`📐 Dimensions calculated for item ${item.id}: ${dimensions}`);
+                console.log(`📐 Dimensions calculated for item ${currentItem.id}: ${dimensions}`);
             };
-            img.onerror = function() {
-                console.error(`❌ Error calculating dimensions for item ${item.id}: ${item.title}`);
+            dimensionsImg.onerror = function() {
+                console.error(`❌ Error calculating dimensions for item ${currentItem.id} (type: ${typeof currentItem.id}): ${currentItem.title}`);
+                console.error(`❌ Debug: original item.id was ${item.id} (type: ${typeof item.id})`);
                 const dimensionsSpan = card.querySelector('.dimensions-placeholder');
                 if (dimensionsSpan) {
                     dimensionsSpan.textContent = 'Unknown';
                 }
             };
-            img.src = displayImage;
+            // Use the same validated image source that was used for display
+            dimensionsImg.src = displayImage;
         }
     });
     

@@ -1,7 +1,7 @@
 // script.js - Main application entry point (v3.0 - SQLite)
 
 // Import all modules (keeping existing structure)
-import { database } from './database.js';  // ← Fixed import path
+import { database } from './clientDatabase.js';  // ← Updated to use server-side database
 import { handleFileSelect, handleFileDrop } from './mediaProcessor.js';
 import { displayImages, updateStats, setAllImages } from './gallery.js';
 import { setupModalEventListeners } from './modal.js';
@@ -36,22 +36,16 @@ async function init() {
 // Load all images and display them
 async function loadImages() {
     try {
-        // Load from both local database and server files for cross-browser compatibility
-        const [localImages, serverFiles] = await Promise.all([
-            database.loadAllMedia().catch(() => []),
-            loadServerFiles().catch(() => [])
-        ]);
-        
-        // Merge server files with local metadata
-        const mergedImages = mergeServerAndLocalData(serverFiles, localImages);
+        // Load ONLY from server database (no filesystem merging needed)
+        const allImages = await database.loadAllMedia();
         
         // Ensure we always have a valid array
-        const validImages = Array.isArray(mergedImages) ? mergedImages : [];
+        const validImages = Array.isArray(allImages) ? allImages : [];
         
         setAllImages(validImages);
         displayImages(validImages);
         
-        console.log(`📊 Loaded ${validImages.length} media items (${localImages.length} local + ${serverFiles.length} server)`);
+        console.log(`📊 Loaded ${validImages.length} media items from server database`);
     } catch (error) {
         console.error('Error loading images:', error);
         showNotification('Error loading media: ' + error.message, 'error');
@@ -360,10 +354,12 @@ function mergeServerAndLocalData(serverFiles, localImages) {
     const merged = [];
     const localByPath = new Map();
     
-    // Index local images by server path for quick lookup
+    // Index local images by normalized server path for quick lookup
     for (const local of localImages) {
         if (local.serverPath) {
-            localByPath.set(local.serverPath, local);
+            // Normalize path separators to forward slashes for comparison
+            const normalizedPath = local.serverPath.replace(/\\/g, '/');
+            localByPath.set(normalizedPath, local);
         }
         // Always include local images (they have metadata)
         merged.push(local);
@@ -371,7 +367,9 @@ function mergeServerAndLocalData(serverFiles, localImages) {
     
     // Add server files that don't have local metadata
     for (const serverFile of serverFiles) {
-        if (!localByPath.has(serverFile.serverPath)) {
+        // Normalize path separators to forward slashes for comparison
+        const normalizedPath = serverFile.serverPath.replace(/\\/g, '/');
+        if (!localByPath.has(normalizedPath)) {
             console.log(`📁 Adding server-only file: ${serverFile.title}`);
             merged.push(serverFile);
         }

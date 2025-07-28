@@ -55,73 +55,134 @@ export async function processFile(file, database) {
         console.log('✅ Server upload successful:', serverUploadResult);
         
         // STEP 2: Store in Database (metadata only, no full image data for server-uploaded files)
-        const reader = new FileReader();
-        return new Promise((resolve, reject) => {
-            reader.onload = async (e) => {
-                try {
-                    const mediaData = e.target.result;
-                    
-                    // Create a small thumbnail for database storage (max 200x200)
-                    const smallThumbnail = await createSmallThumbnail(mediaData, isVideo ? thumbnailData : mediaData);
-                    
-                    const newMedia = {
-                        title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
-                        prompt: aiInfo.prompt || '',
-                        model: aiInfo.model || '',
-                        tags: aiInfo.tags || '',
-                        notes: aiInfo.notes || '',
-                        dateAdded: new Date().toISOString(),
-                        imageData: '', // Don't store full image data when server upload succeeds
-                        metadata: metadata,
-                        serverPath: serverUploadResult.relativePath || null,
-                        mediaType: isVideo ? 'video' : 'image',
-                        thumbnailData: smallThumbnail, // Store small thumbnail only
-                        thumbnailPosition: { x: 50, y: 25 } // TOP-ALIGNED: 25% from top instead of 50% center
-                    };
+        // For videos, we don't need to read the file data since we're not storing it
+        if (isVideo) {
+            try {
+                // Optimize metadata for server transmission (same as images)
+                const optimizedMetadata = optimizeMetadataForServer(metadata || {});
+                
+                // Ensure we have a thumbnail - if generation failed, create a simple placeholder
+                let finalThumbnailData = thumbnailData;
+                if (!finalThumbnailData || finalThumbnailData.trim() === '') {
+                    console.warn('⚠️ No thumbnail generated for video, creating placeholder');
+                    finalThumbnailData = await createVideoPlaceholderThumbnail();
+                }
+                
+                const newMedia = {
+                    title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
+                    prompt: aiInfo.prompt || '',
+                    model: aiInfo.model || '',
+                    tags: aiInfo.tags || '',
+                    notes: aiInfo.notes || '',
+                    dateAdded: new Date().toISOString(),
+                    imageData: '', // Don't store full video data
+                    metadata: optimizedMetadata,
+                    serverPath: serverUploadResult.relativePath || null,
+                    mediaType: 'video',
+                    thumbnailData: finalThumbnailData,
+                    thumbnailPosition: { x: 50, y: 25 } // TOP-ALIGNED: 25% from top instead of 50% center
+                };
 
-                    // CRITICAL: Try to add to database, rollback server file if it fails
+                console.log('🎬 Video media object prepared:', {
+                    title: newMedia.title,
+                    hasThumbnail: !!newMedia.thumbnailData,
+                    thumbnailLength: newMedia.thumbnailData ? newMedia.thumbnailData.length : 0,
+                    serverPath: newMedia.serverPath
+                });
+
+                // CRITICAL: Try to add to database, rollback server file if it fails
+                const mediaId = await database.addMedia(newMedia);
+                console.log('✅ Database entry created successfully');
+                return { 
+                    success: true, 
+                    imageId: mediaId, 
+                    imageData: newMedia,
+                    serverUpload: serverUploadResult 
+                };
+            } catch (dbError) {
+                console.error('❌ Database operation failed, rolling back server file:', dbError);
+                console.error('❌ Database error details:', dbError.message, dbError.stack);
+                
+                // Rollback: Delete the uploaded file from server
+                try {
+                    await deleteServerFile(serverUploadResult.relativePath);
+                    console.log('✅ Server file rolled back successfully');
+                } catch (deleteError) {
+                    console.error('❌ Failed to rollback server file:', deleteError);
+                }
+                
+                throw new Error(`Database operation failed: ${dbError.message}. Server file has been cleaned up.`);
+            }
+        } else {
+            // For images, read the file data
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
                     try {
-                        const mediaId = await database.getInstance().images.add(newMedia);
-                        console.log('✅ Database entry created successfully');
-                        resolve({ 
-                            success: true, 
-                            imageId: mediaId, 
-                            imageData: newMedia,
-                            serverUpload: serverUploadResult 
-                        });
-                    } catch (dbError) {
-                        console.error('❌ Database operation failed, rolling back server file:', dbError);
+                        const mediaData = e.target.result;
                         
-                        // Rollback: Delete the uploaded file from server
+                        // Create a small thumbnail for images
+                        const finalThumbnailData = await createSmallThumbnail(mediaData, mediaData);
+                        
+                        const newMedia = {
+                            title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
+                            prompt: aiInfo.prompt || '',
+                            model: aiInfo.model || '',
+                            tags: aiInfo.tags || '',
+                            notes: aiInfo.notes || '',
+                            dateAdded: new Date().toISOString(),
+                            imageData: '', // Don't store full image data when server upload succeeds
+                            metadata: metadata,
+                            serverPath: serverUploadResult.relativePath || null,
+                            mediaType: 'image',
+                            thumbnailData: finalThumbnailData, // Store thumbnail data
+                            thumbnailPosition: { x: 50, y: 25 } // TOP-ALIGNED: 25% from top instead of 50% center
+                        };
+
+                        // CRITICAL: Try to add to database, rollback server file if it fails
+                        try {
+                            const mediaId = await database.addMedia(newMedia);
+                            console.log('✅ Database entry created successfully');
+                            resolve({ 
+                                success: true, 
+                                imageId: mediaId, 
+                                imageData: newMedia,
+                                serverUpload: serverUploadResult 
+                            });
+                        } catch (dbError) {
+                            console.error('❌ Database operation failed, rolling back server file:', dbError);
+                            
+                            // Rollback: Delete the uploaded file from server
+                            try {
+                                await deleteServerFile(serverUploadResult.relativePath);
+                                console.log('✅ Server file rolled back successfully');
+                            } catch (deleteError) {
+                                console.error('❌ Failed to rollback server file:', deleteError);
+                            }
+                            
+                            reject(new Error(`Database operation failed: ${dbError.message}. Server file has been cleaned up.`));
+                        }
+                    } catch (error) {
+                        // If any other error occurs, also try to rollback server file
+                        console.error('❌ Processing error, rolling back server file:', error);
                         try {
                             await deleteServerFile(serverUploadResult.relativePath);
-                            console.log('✅ Server file rolled back successfully');
+                            console.log('✅ Server file rolled back after processing error');
                         } catch (deleteError) {
-                            console.error('❌ Failed to rollback server file:', deleteError);
+                            console.error('❌ Failed to rollback server file after processing error:', deleteError);
                         }
-                        
-                        reject(new Error(`Database operation failed: ${dbError.message}. Server file has been cleaned up.`));
+                        reject(error);
                     }
-                } catch (error) {
-                    // If any other error occurs, also try to rollback server file
-                    console.error('❌ Processing error, rolling back server file:', error);
-                    try {
-                        await deleteServerFile(serverUploadResult.relativePath);
-                        console.log('✅ Server file rolled back after processing error');
-                    } catch (deleteError) {
-                        console.error('❌ Failed to rollback server file after processing error:', deleteError);
-                    }
-                    reject(error);
-                }
-            };
-            
-            reader.onerror = () => {
-                // Also rollback on file read error
-                deleteServerFile(serverUploadResult.relativePath).catch(console.error);
-                reject(new Error('Failed to read file'));
-            };
-            reader.readAsDataURL(file);
-        });
+                };
+                
+                reader.onerror = () => {
+                    // Also rollback on file read error
+                    deleteServerFile(serverUploadResult.relativePath).catch(console.error);
+                    reject(new Error('Failed to read file'));
+                };
+                reader.readAsDataURL(file);
+            });
+        }
     } catch (serverError) {
         console.error('❌ Server upload failed:', serverError);
         console.error('Error details:', serverError.message);
@@ -147,7 +208,7 @@ export async function processFile(file, database) {
                         thumbnailPosition: { x: 50, y: 25 } // TOP-ALIGNED: 25% from top instead of 50% center
                     };
 
-                    const mediaId = await database.getInstance().images.add(newMedia);
+                    const mediaId = await database.addMedia(newMedia);
                     resolve({ 
                         success: true, 
                         imageId: mediaId, 
@@ -163,6 +224,45 @@ export async function processFile(file, database) {
             reader.readAsDataURL(file);
         });
     }
+}
+
+/**
+ * Optimize metadata for server transmission by reducing size
+ * Keeps essential information while removing large data that could cause "request entity too large" errors
+ */
+function optimizeMetadataForServer(metadata) {
+    if (!metadata || typeof metadata !== 'object') {
+        return {};
+    }
+    
+    const optimized = {};
+    
+    // Copy essential metadata fields with size limits
+    for (const [key, value] of Object.entries(metadata)) {
+        if (typeof value === 'string') {
+            // Limit string values to 1000 characters to prevent oversized requests
+            optimized[key] = value.length > 1000 ? value.substring(0, 1000) + '...[truncated]' : value;
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
+            // Keep numbers and booleans as-is
+            optimized[key] = value;
+        } else if (value && typeof value === 'object') {
+            // For objects, only keep essential fields and limit depth
+            if (key === 'workflow' || key === 'prompt') {
+                // For large objects like workflow, create a summary instead
+                optimized[key] = `[Object with ${Object.keys(value).length} properties]`;
+            } else {
+                // For other objects, keep but limit size
+                const objStr = JSON.stringify(value);
+                if (objStr.length > 500) {
+                    optimized[key] = `[Large object - ${objStr.length} chars]`;
+                } else {
+                    optimized[key] = value;
+                }
+            }
+        }
+    }
+    
+    return optimized;
 }
 
 /**
@@ -217,44 +317,105 @@ async function createSmallThumbnail(originalData, sourceData) {
 }
 
 /**
- * Generate video thumbnail from first frame
+ * Generate video thumbnail from first frame (simple and reliable)
  */
 async function generateVideoThumbnail(videoFile) {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
+
         video.addEventListener('loadeddata', () => {
             // Seek to 1 second or 10% of video duration, whichever is smaller
             const seekTime = Math.min(1, video.duration * 0.1);
             video.currentTime = seekTime;
         });
-        
+
         video.addEventListener('seeked', () => {
             try {
+                // Set canvas to video dimensions
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0);
-                
+
+                // Draw the video frame
+                ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+
+                // Convert to data URL with slightly reduced quality to prevent corruption
                 const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.8);
                 URL.revokeObjectURL(video.src);
-                resolve(thumbnailDataUrl);
+
+                // Add detailed logging for base64 data
+                console.log(`🔍 Generated video thumbnail data URL (${thumbnailDataUrl.length} chars)`);
+                console.log(`🔍 Thumbnail data preview: ${thumbnailDataUrl.substring(0, 100)}...`);
+
+                // Validate the generated thumbnail data URL
+                if (!thumbnailDataUrl.startsWith('data:image/jpeg;base64,')) {
+                    console.warn('⚠️ Invalid thumbnail data URL format');
+                    resolve(null);
+                } else {
+                    // Ensure the base64 data is not corrupted
+                    try {
+                        const base64Data = thumbnailDataUrl.split(',')[1];
+                        atob(base64Data);
+                        resolve(thumbnailDataUrl);
+                    } catch (e) {
+                        console.warn('⚠️ Corrupted base64 data detected');
+                        resolve(null);
+                    }
+                }
             } catch (error) {
                 console.error('Error generating video thumbnail:', error);
                 URL.revokeObjectURL(video.src);
                 resolve(null);
             }
         });
-        
+
         video.addEventListener('error', (e) => {
             console.error('Video loading error:', e);
             URL.revokeObjectURL(video.src);
             resolve(null);
         });
-        
+
         video.src = URL.createObjectURL(videoFile);
         video.load();
+    });
+}
+
+/**
+ * Create a placeholder thumbnail for videos when thumbnail generation fails
+ */
+async function createVideoPlaceholderThumbnail() {
+    return new Promise((resolve) => {
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Create a 200x200 placeholder
+            canvas.width = 200;
+            canvas.height = 200;
+            
+            // Fill with dark background
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, 0, 200, 200);
+            
+            // Add video icon
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🎬', 100, 100);
+            
+            // Add "VIDEO" text
+            ctx.font = '16px Arial';
+            ctx.fillText('VIDEO', 100, 140);
+            
+            const placeholderDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            resolve(placeholderDataUrl);
+        } catch (error) {
+            console.warn('Error creating video placeholder:', error);
+            // Return a minimal data URL as last resort
+            resolve('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+        }
     });
 }
 
@@ -353,11 +514,14 @@ async function deleteServerFile(relativePath) {
     
     console.log('🗑️ Attempting to delete server file:', relativePath);
     
+    // Normalize path separators to forward slashes
+    const normalizedPath = relativePath.replace(/\\/g, '/');
+    
     // Parse the relative path to extract folder, date, and filename
     // Expected format: "images/2025-07-23/filename.png" or "videos/2025-07-23/filename.mp4"
-    const pathParts = relativePath.split('/');
+    const pathParts = normalizedPath.split('/');
     if (pathParts.length !== 3) {
-        throw new Error(`Invalid path format: ${relativePath}. Expected: folder/date/filename`);
+        throw new Error(`Invalid path format: ${normalizedPath}. Expected: folder/date/filename`);
     }
     
     const [folder, date, filename] = pathParts;

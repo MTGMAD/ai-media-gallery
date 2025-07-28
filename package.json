@@ -3,6 +3,7 @@
   "version": "3.0.0",
   "description": "AI Media Gallery with SQLite via sql.js for high-performance client-side database - supports images and videos",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -15,7 +16,9 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

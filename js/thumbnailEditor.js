@@ -1,6 +1,6 @@
 // thumbnailEditor.js - Handles thumbnail position editing functionality
 
-import { database } from './database.js';
+import { database } from './clientDatabase.js';
 import { showNotification } from './utils.js';
 
 let thumbnailEditImageId = null;

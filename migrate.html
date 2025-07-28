@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Media Gallery - Database Migration</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .step h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: background 0.2s;
+        }
+        
+        .button:hover {
+            background: #0056b3;
+        }
+        
+        .button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border-left-color: #28a745;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left-color: #ffc107;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left-color: #dc3545;
+        }
+        
+        .progress {
+            background: #e9ecef;
+            border-radius: 4px;
+            height: 20px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            background: #007bff;
+            height: 100%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .file-input {
+            margin: 10px 0;
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+        }
+        
+        .file-input:hover {
+            border-color: #007bff;
+            background: #f8f9fa;
+        }
+        
+        .status {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        
+        .browser-note {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        
+        .browser-note strong {
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Database Migration Tool</h1>
+        
+        <div class="browser-note">
+            <strong>📋 Migration Instructions:</strong><br>
+            This tool will help you migrate your data from Microsoft Edge's localStorage to the new server-side database.
+            All other browsers will then show the same data.
+        </div>
+        
+        <div class="step">
+            <h3>Step 1: Export Data from Microsoft Edge</h3>
+            <p>Open Microsoft Edge and navigate to your AI Media Gallery. Use the export function to download your data.</p>
+            <p><strong>Important:</strong> Make sure you're using Microsoft Edge (your browser with the complete data) for this step.</p>
+            <button class="button" onclick="openMainApp()">🌐 Open AI Media Gallery in New Tab</button>
+        </div>
+        
+        <div class="step">
+            <h3>Step 2: Upload Your Export File</h3>
+            <p>Select the JSON backup file you exported from Microsoft Edge:</p>
+            
+            <div class="file-input" onclick="document.getElementById('exportFile').click()">
+                <input type="file" id="exportFile" accept=".json" style="display: none;" onchange="handleFileSelect(event)">
+                📁 Click to select your backup file (.json)
+            </div>
+            
+            <div id="fileInfo" class="hidden">
+                <p><strong>Selected file:</strong> <span id="fileName"></span></p>
+                <p><strong>File size:</strong> <span id="fileSize"></span></p>
+                <p><strong>Items to migrate:</strong> <span id="itemCount"></span></p>
+            </div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 3: Migrate to Server Database</h3>
+            <p>Click the button below to migrate your data to the server-side database:</p>
+            
+            <button id="migrateBtn" class="button" onclick="startMigration()" disabled>
+                🚀 Start Migration
+            </button>
+            
+            <div id="migrationProgress" class="hidden">
+                <div class="progress">
+                    <div id="progressBar" class="progress-bar" style="width: 0%">0%</div>
+                </div>
+                <p id="progressText">Preparing migration...</p>
+            </div>
+            
+            <div id="migrationStatus" class="hidden"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 4: Verify Migration</h3>
+            <p>After migration completes, verify that all your data is available:</p>
+            
+            <button id="verifyBtn" class="button" onclick="verifyMigration()" disabled>
+                ✅ Verify Migration
+            </button>
+            
+            <div id="verificationResults" class="hidden"></div>
+        </div>
+        
+        <div class="step success hidden" id="completionStep">
+            <h3>🎉 Migration Complete!</h3>
+            <p>Your data has been successfully migrated to the server-side database. All browsers will now show the same data.</p>
+            <p><strong>Next steps:</strong></p>
+            <ul>
+                <li>Test the gallery in different browsers to confirm they show identical data</li>
+                <li>You can now safely clear browser storage in other browsers if needed</li>
+                <li>The server database file is located at: <code>ai-gallery.db</code></li>
+            </ul>
+            <button class="button" onclick="openMainApp()">🌐 Open AI Media Gallery</button>
+        </div>
+    </div>
+
+    <script>
+        let exportData = null;
+        let migrationComplete = false;
+
+        function openMainApp() {
+            window.open('/', '_blank');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    exportData = JSON.parse(e.target.result);
+                    
+                    // Validate the export data
+                    if (!exportData.images || !Array.isArray(exportData.images)) {
+                        throw new Error('Invalid export file format');
+                    }
+
+                    // Display file information
+                    document.getElementById('fileName').textContent = file.name;
+                    document.getElementById('fileSize').textContent = formatFileSize(file.size);
+                    document.getElementById('itemCount').textContent = exportData.images.length;
+                    document.getElementById('fileInfo').classList.remove('hidden');
+                    document.getElementById('migrateBtn').disabled = false;
+
+                    showStatus('success', `✅ Export file loaded successfully! Found ${exportData.images.length} items to migrate.`);
+                } catch (error) {
+                    showStatus('error', `❌ Error reading export file: ${error.message}`);
+                    exportData = null;
+                    document.getElementById('fileInfo').classList.add('hidden');
+                    document.getElementById('migrateBtn').disabled = true;
+                }
+            };
+
+            reader.onerror = function() {
+                showStatus('error', '❌ Error reading file');
+            };
+
+            reader.readAsText(file);
+        }
+
+        async function startMigration() {
+            if (!exportData) {
+                showStatus('error', '❌ No export data loaded');
+                return;
+            }
+
+            document.getElementById('migrateBtn').disabled = true;
+            document.getElementById('migrationProgress').classList.remove('hidden');
+            
+            try {
+                updateProgress(10, 'Connecting to server...');
+                
+                // Test server connection
+                const testResponse = await fetch('/api/stats');
+                if (!testResponse.ok) {
+                    throw new Error('Server connection failed');
+                }
+
+                updateProgress(25, 'Server connection established...');
+                updateProgress(50, `Uploading ${exportData.images.length} items...`);
+
+                // Send migration request
+                const response = await fetch('/api/migrate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(exportData)
+                });
+
+                updateProgress(75, 'Processing migration...');
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'Migration failed');
+                }
+
+                updateProgress(100, 'Migration completed!');
+
+                // Show success status
+                const statusHtml = `
+                    <div class="status success">
+                        <h4>✅ Migration Successful!</h4>
+                        <p><strong>Items imported:</strong> ${result.imported}</p>
+                        <p><strong>Errors:</strong> ${result.errors}</p>
+                        <p><strong>Message:</strong> ${result.message}</p>
+                    </div>
+                `;
+                document.getElementById('migrationStatus').innerHTML = statusHtml;
+                document.getElementById('migrationStatus').classList.remove('hidden');
+
+                // Enable verification
+                document.getElementById('verifyBtn').disabled = false;
+                migrationComplete = true;
+
+            } catch (error) {
+                updateProgress(0, 'Migration failed');
+                showStatus('error', `❌ Migration failed: ${error.message}`);
+                document.getElementById('migrateBtn').disabled = false;
+            }
+        }
+
+        async function verifyMigration() {
+            if (!migrationComplete) {
+                showStatus('warning', '⚠️ Please complete migration first');
+                return;
+            }
+
+            try {
+                // Get server stats
+                const response = await fetch('/api/stats');
+                if (!response.ok) {
+                    throw new Error('Failed to get server stats');
+                }
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error('Failed to get stats');
+                }
+
+                const stats = result.stats;
+                
+                const verificationHtml = `
+                    <div class="status success">
+                        <h4>📊 Server Database Status</h4>
+                        <p><strong>Total items:</strong> ${stats.total}</p>
+                        <p><strong>Images:</strong> ${stats.images}</p>
+                        <p><strong>Videos:</strong> ${stats.videos}</p>
+                        <p><strong>Total size:</strong> ${stats.totalSizeMB} MB</p>
+                        <p>✅ Server database is working correctly!</p>
+                    </div>
+                `;
+                
+                document.getElementById('verificationResults').innerHTML = verificationHtml;
+                document.getElementById('verificationResults').classList.remove('hidden');
+
+                // Show completion step
+                document.getElementById('completionStep').classList.remove('hidden');
+
+            } catch (error) {
+                const verificationHtml = `
+                    <div class="status error">
+                        <h4>❌ Verification Failed</h4>
+                        <p>Error: ${error.message}</p>
+                    </div>
+                `;
+                document.getElementById('verificationResults').innerHTML = verificationHtml;
+                document.getElementById('verificationResults').classList.remove('hidden');
+            }
+        }
+
+        function updateProgress(percent, text) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            progressText.textContent = text;
+        }
+
+        function showStatus(type, message) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.innerHTML = message;
+            
+            // Remove any existing status messages
+            const existingStatus = document.querySelector('.status');
+            if (existingStatus) {
+                existingStatus.remove();
+            }
+            
+            // Add new status after the current step
+            const currentStep = document.querySelector('.step:nth-child(3)');
+            currentStep.appendChild(statusDiv);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>

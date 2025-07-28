@@ -1,15 +1,26 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const cors = require('cors');
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import cors from 'cors';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import serverDB from './js/serverDatabase.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+
+const execAsync = promisify(exec);
 
 const app = express();
 const PORT = process.env.PORT || 3015;
 
-// Enable CORS and JSON parsing
+// Enable CORS and JSON parsing with increased limits for large metadata
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static('.'));
 
 // Serve favicon and related files with proper MIME types
@@ -95,6 +106,219 @@ const upload = multer({
     } else {
       cb(new Error('Only image and video files are allowed!'), false);
     }
+  }
+});
+
+/**
+ * Generate ultra-high-quality video thumbnail using FFmpeg
+ * @param {string} videoPath - Full path to the video file
+ * @param {string} filename - Original filename for thumbnail naming
+ * @returns {Promise<string>} - Path to generated thumbnail
+ */
+async function generateVideoThumbnailFFmpeg(videoPath, filename) {
+  // Create thumbnails directory if it doesn't exist
+  const thumbnailsDir = path.join(__dirname, 'thumbnails');
+  if (!fs.existsSync(thumbnailsDir)) {
+    fs.mkdirSync(thumbnailsDir, { recursive: true });
+    console.log(`📁 Created thumbnails directory: ${thumbnailsDir}`);
+  }
+
+  // Generate thumbnail filename (replace video extension with .png for lossless quality)
+  const thumbnailName = filename.replace(/\.[^/.]+$/, '_thumb.png');
+  const thumbnailPath = path.join(thumbnailsDir, thumbnailName);
+
+  // Ultra-high-quality FFmpeg command
+  // -ss 00:00:02: seek to 2 seconds (better frame quality)
+  // -i: input video file
+  // -vframes 1: extract only 1 frame
+  // -vf scale=1200:-1: scale to 1200px width for ultra-high quality
+  // -pix_fmt rgb24: use RGB pixel format for best quality
+  // -compression_level 0: PNG with no compression (lossless)
+  // -y: overwrite output file if exists
+  const ffmpegCommand = `ffmpeg -ss 00:00:02 -i "${videoPath}" -vframes 1 -vf "scale=1200:-1" -pix_fmt rgb24 -compression_level 0 -y "${thumbnailPath}"`;
+
+  console.log(`🎬 Running ultra-high-quality FFmpeg command: ${ffmpegCommand}`);
+
+  try {
+    const { stdout, stderr } = await execAsync(ffmpegCommand, { timeout: 30000 }); // 30 second timeout
+    
+    if (stderr) {
+      console.log(`🎬 FFmpeg stderr: ${stderr}`);
+    }
+    
+    if (stdout) {
+      console.log(`🎬 FFmpeg stdout: ${stdout}`);
+    }
+    
+    // Check if thumbnail was created successfully
+    if (fs.existsSync(thumbnailPath)) {
+      const stats = fs.statSync(thumbnailPath);
+      console.log(`✅ Ultra-high-quality thumbnail generated: ${thumbnailName} (${(stats.size / 1024).toFixed(1)}KB)`);
+      return thumbnailPath;
+    } else {
+      throw new Error('Thumbnail file was not created by FFmpeg');
+    }
+  } catch (error) {
+    console.error(`❌ FFmpeg error details:`, error);
+    
+    // Try a fallback command with different settings
+    console.log(`🔄 Trying fallback FFmpeg command...`);
+    const fallbackCommand = `ffmpeg -ss 00:00:01 -i "${videoPath}" -vframes 1 -q:v 1 -vf "scale=800:-1" -y "${thumbnailPath.replace('.png', '.jpg')}"`;
+    
+    try {
+      await execAsync(fallbackCommand, { timeout: 30000 });
+      const fallbackPath = thumbnailPath.replace('.png', '.jpg');
+      
+      if (fs.existsSync(fallbackPath)) {
+        const stats = fs.statSync(fallbackPath);
+        console.log(`✅ Fallback thumbnail generated: ${path.basename(fallbackPath)} (${(stats.size / 1024).toFixed(1)}KB)`);
+        return fallbackPath;
+      }
+    } catch (fallbackError) {
+      console.error(`❌ Fallback FFmpeg also failed:`, fallbackError);
+    }
+    
+    throw error;
+  }
+}
+
+// Initialize database on server start
+serverDB.init().catch(console.error);
+
+// DATABASE API ENDPOINTS
+
+// Get all media items
+app.get('/api/media', async (req, res) => {
+  try {
+    const media = await serverDB.getAllMedia();
+    res.json({ success: true, media });
+  } catch (error) {
+    console.error('Error fetching media:', error);
+    res.status(500).json({ error: 'Failed to fetch media' });
+  }
+});
+
+// Add new media item
+app.post('/api/media', async (req, res) => {
+  try {
+    const mediaData = req.body;
+    console.log('📥 Received media data:', {
+      title: mediaData.title,
+      mediaType: mediaData.mediaType,
+      hasMetadata: !!mediaData.metadata,
+      metadataKeys: mediaData.metadata ? Object.keys(mediaData.metadata) : [],
+      serverPath: mediaData.serverPath
+    });
+    
+    const id = await serverDB.addMedia(mediaData);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('❌ Error adding media:', error);
+    console.error('❌ Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to add media: ' + error.message });
+  }
+});
+
+// Update media item
+app.put('/api/media/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updateData = req.body;
+    const changes = await serverDB.updateMedia(id, updateData);
+    res.json({ success: true, changes });
+  } catch (error) {
+    console.error('Error updating media:', error);
+    res.status(500).json({ error: 'Failed to update media' });
+  }
+});
+
+// Delete media item
+app.delete('/api/media/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const changes = await serverDB.deleteMedia(id);
+    res.json({ success: true, changes });
+  } catch (error) {
+    console.error('Error deleting media:', error);
+    res.status(500).json({ error: 'Failed to delete media' });
+  }
+});
+
+// Get media by ID
+app.get('/api/media/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const media = await serverDB.getMediaById(id);
+    if (media) {
+      res.json({ success: true, media });
+    } else {
+      res.status(404).json({ error: 'Media not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching media by ID:', error);
+    res.status(500).json({ error: 'Failed to fetch media' });
+  }
+});
+
+// Search media
+app.get('/api/media/search/:term', async (req, res) => {
+  try {
+    const searchTerm = req.params.term;
+    const media = await serverDB.searchMedia(searchTerm);
+    res.json({ success: true, media });
+  } catch (error) {
+    console.error('Error searching media:', error);
+    res.status(500).json({ error: 'Failed to search media' });
+  }
+});
+
+// Get database statistics
+app.get('/api/stats', async (req, res) => {
+  try {
+    const stats = await serverDB.getStats();
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// Import data from client export (for migration)
+app.post('/api/migrate', async (req, res) => {
+  try {
+    const exportData = req.body;
+    console.log('📥 Received migration request with', exportData?.images?.length || 0, 'items');
+    
+    const result = await serverDB.importData(exportData);
+    res.json({ 
+      success: true, 
+      imported: result.imported, 
+      errors: result.errors,
+      message: `Successfully imported ${result.imported} items with ${result.errors} errors`
+    });
+  } catch (error) {
+    console.error('Error during migration:', error);
+    res.status(500).json({ error: 'Migration failed: ' + error.message });
+  }
+});
+
+// Export all data (backup functionality)
+app.get('/api/export', async (req, res) => {
+  try {
+    const allMedia = await serverDB.getAllMedia();
+    const exportData = {
+      version: '3.0-server',
+      exportDate: new Date().toISOString(),
+      totalItems: allMedia.length,
+      images: allMedia
+    };
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="ai-gallery-backup.json"');
+    res.json(exportData);
+  } catch (error) {
+    console.error('Error exporting data:', error);
+    res.status(500).json({ error: 'Failed to export data' });
   }
 });
 
@@ -287,6 +511,9 @@ app.use('/images', express.static(path.join(__dirname, 'images')));
 
 // Serve uploaded videos statically
 app.use('/videos', express.static(path.join(__dirname, 'videos')));
+
+// Serve generated thumbnails statically
+app.use('/thumbnails', express.static(path.join(__dirname, 'thumbnails')));
 
 // Error handling middleware
 app.use((error, req, res, next) => {

@@ -1,7 +1,7 @@
 // thumbnailGenerator.js - Version 2.1
 // Advanced utilities for generating high-quality thumbnails with modular integration
 
-import { database } from './database.js';
+import { database } from './clientDatabase.js';
 import { showNotification } from './utils.js';
 
 /**
