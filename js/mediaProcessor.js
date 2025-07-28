@@ -124,6 +124,9 @@ export async function processFile(file, database) {
                         // Create a small thumbnail for images
                         const finalThumbnailData = await createSmallThumbnail(mediaData, mediaData);
                         
+                        // Add original file size to metadata for images
+                        const imageMetadata = { ...metadata, fileSize: file.size };
+
                         const newMedia = {
                             title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
                             prompt: aiInfo.prompt || '',
@@ -132,7 +135,7 @@ export async function processFile(file, database) {
                             notes: aiInfo.notes || '',
                             dateAdded: new Date().toISOString(),
                             imageData: '', // Don't store full image data when server upload succeeds
-                            metadata: metadata,
+                            metadata: optimizeMetadataForServer(imageMetadata), // Optimize metadata for server transmission
                             serverPath: serverUploadResult.relativePath || null,
                             mediaType: 'image',
                             thumbnailData: finalThumbnailData, // Store thumbnail data
@@ -193,6 +196,9 @@ export async function processFile(file, database) {
                 try {
                     const mediaData = e.target.result;
                     
+                    // Add original file size to metadata for images, even if server upload fails
+                    const imageMetadata = { ...metadata, fileSize: file.size };
+
                     const newMedia = {
                         title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
                         prompt: aiInfo.prompt || '',
@@ -201,7 +207,7 @@ export async function processFile(file, database) {
                         notes: aiInfo.notes || '',
                         dateAdded: new Date().toISOString(),
                         imageData: mediaData,
-                        metadata: metadata,
+                        metadata: optimizeMetadataForServer(imageMetadata), // Optimize metadata for server transmission
                         serverPath: null,
                         mediaType: isVideo ? 'video' : 'image',
                         thumbnailData: thumbnailData || mediaData,

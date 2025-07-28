@@ -41,18 +41,21 @@ export function displayImages(items) {
         
         // Get file size from base64 data or server file info
         let fileSize;
-        if (isVideo && item.metadata && item.metadata.fileSize) {
-            // For videos, use metadata file size if available
+        // Prioritize metadata.fileSize if available (for both videos and images)
+        if (item.metadata && item.metadata.fileSize) {
             const sizeInMB = (item.metadata.fileSize / (1024 * 1024)).toFixed(1);
+            const sizeInKB = (item.metadata.fileSize / 1024).toFixed(1);
             fileSize = {
                 bytes: item.metadata.fileSize,
-                display: `${sizeInMB} MB`,
+                display: item.metadata.fileSize > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`,
                 mb: sizeInMB,
-                kb: (item.metadata.fileSize / 1024).toFixed(1)
+                kb: sizeInKB
             };
         } else {
-            // For images or videos without metadata, calculate from base64 data
-            fileSize = calculateFileSize(item.imageData);
+            // Fallback: For images or videos without metadata.fileSize, calculate from base64 data.
+            // Prefer thumbnailData if imageData is empty (which it will be for server-uploaded images).
+            const dataToCalculateFrom = item.imageData || item.thumbnailData;
+            fileSize = calculateFileSize(dataToCalculateFrom);
         }
         
 // Use server path if available, otherwise fall back to database data
